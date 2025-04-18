@@ -1,36 +1,68 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <stddef.h>
 #include "queue.h"
 
-//To create a queue
-int queue_init(int size){
-	return 0;
+
+// Inicializar la cola circular
+int queue_init(t_tape *queue, int capacity)
+{
+    queue->elements = safe_malloc(sizeof(struct element) * capacity); // Asignar memoria para los elementos
+    queue->head = 0;
+    queue->tail = -1;
+	queue->size = 0;
+    return (0); // Éxito
 }
 
-
-// To Enqueue an element
-int queue_put(struct element* x) {
-	return 0;
+// Insertar un elemento en la cola
+int queue_put(t_tape *queue, element *x)
+{
+    if (queue_full(queue))
+        return (-1); // Cola llena
+    queue->size++;
+    x->id_belt = queue->id; // Asignar el id de la cinta
+    x->num_edition = queue->num_created; // Asignar el número de edición
+    queue->num_created++;
+    if (queue->num_created == queue->num_elements)
+        x->last = true;
+    else
+        x->last = false;
+    queue->tail = (queue->tail + 1) % queue->max_size; // Avanzar el índice de rear
+    queue->elements[queue->tail] = *x; // Copiar el elemento
+    return (0); // Éxito
 }
 
-
-// To Dequeue an element.
-struct element* queue_get(void) {
-	return NULL;
+// Eliminar un elemento de la cola
+element *queue_get(t_tape *queue)
+{
+	element *item;
+    if (queue_empty(queue))
+        return (NULL);
+    item = &queue->elements[queue->head]; // Obtener el elemento
+    queue->head = (queue->head + 1) % queue->max_size; // Avanzar el índice de front
+    queue->size--;
+    return (item);
 }
 
-
-//To check queue state
-int queue_empty(void){
-	return 0;
+// Verificar si la cola está vacía
+int inline queue_empty(t_tape *queue)
+{
+    return (queue->size == 0);
 }
 
-int queue_full(void){
-	return 0;
+// Verificar si la cola está llena
+int inline queue_full(t_tape *queue)
+{
+    return (queue->size == queue->max_size);
 }
 
-//To destroy the queue and free the resources
-int queue_destroy(void){
-	return 0;
+// Destruir la cola y liberar los recursos
+int queue_destroy(t_tape *queue)
+{
+    free(queue->elements);
+    queue->elements = NULL;
+    queue->max_size = 0;
+    queue->head = 0;
+    queue->tail = -1;
+    queue->size = 0;
+    return (0);
 }

@@ -9,6 +9,9 @@
 #include <semaphore.h>
 #include <sys/stat.h>
 #include <pthread.h>
+#include <stdbool.h>
+#include <string.h>
+#include <ctype.h>
 
 # define BLACK "\033[30m"
 # define RED "\033[31m"
@@ -22,25 +25,41 @@
 
 typedef struct s_factory t_factory;
 
+typedef struct element {
+	int num_edition;
+	int id_belt;
+	int last;
+} element;
+
 typedef struct s_tape
 {
 	int id;
 	int semaphore_id;
-	int tape_size;
+	int max_size; //capacity
+	int size; //size
 	int num_elements;
-	t_factory *factory;
+	int num_created;
+	int head;
+	int tail;
+	bool finished;
 	pthread_t tape_id;
+	pthread_mutex_t queue_mtx;
+	pthread_cond_t cond_full;
+	t_factory *factory;
+	element *elements;
 } t_tape;
 
 typedef struct s_factory
 {
 	int max_tapes;
 	int n_tapes;
+	bool ready;
+	pthread_mutex_t mtx;
 	t_tape *tapes;
 	sem_t *sems;
 } t_factory;
 
-typedef enum e_operation
+typedef enum e_operations
 {
 	CREATE,
 	DETACH,
@@ -51,22 +70,21 @@ typedef enum e_operation
 	UNLOCK,
 	WAIT,
 	POST,
-} t_operation;
+	SIGNAL,
+} t_operations;
 
-typedef struct element {
-	int num_edition;
-	int id_belt;
-	int last;
-} element;
-
-int queue_init (int size);
-int queue_destroy (void);
-int queue_put (struct element* elem);
-struct element * queue_get(void);
-int queue_empty (void);
-int queue_full(void);
-void safe_sem(sem_t *sem, int value, t_operation operation);
-void safe_thread(pthread_t *thread, void *(*f)(void *), void *arg, t_operation operation);
+int queue_init(t_tape *queue, int capacity);
+int queue_destroy(t_tape *queue);
+int queue_put(t_tape *queue, element *x);
+element *queue_get(t_tape *queue);
+int queue_empty(t_tape *queue);
+int queue_full(t_tape *queue);
+void *safe_malloc(size_t size);
+void safe_sem(sem_t *sem, int value, t_operations operation);
+void safe_thread(pthread_t *thread, void *(*f)(void *), void *arg, void *retval, t_operations operation);
+void safe_mutex(pthread_mutex_t *mutex, t_operations operation);
+void safe_cond(pthread_cond_t *cond, pthread_mutex_t *mutex, t_operations operation);
 void *process_manager (void *arg);
+void set_bool(pthread_mutex_t *mutex, bool *target, bool value);
 
 #endif
