@@ -25,11 +25,12 @@
 
 typedef struct s_factory t_factory;
 
-typedef struct element {
+typedef struct s_element
+{
 	int num_edition;
 	int id_belt;
 	int last;
-} element;
+} t_element;
 
 typedef struct s_tape
 {
@@ -43,17 +44,18 @@ typedef struct s_tape
 	int tail;
 	bool finished;
 	pthread_t tape_id;
+	pthread_cond_t not_full;
+	pthread_cond_t not_empty;
 	pthread_mutex_t queue_mtx;
-	pthread_cond_t cond_full;
 	t_factory *factory;
-	element *elements;
+	t_element *elements;
 } t_tape;
 
 typedef struct s_factory
 {
 	int max_tapes;
 	int n_tapes;
-	bool ready;
+	pthread_cond_t ready;
 	pthread_mutex_t mtx;
 	t_tape *tapes;
 	sem_t *sems;
@@ -71,15 +73,16 @@ typedef enum e_operations
 	WAIT,
 	POST,
 	SIGNAL,
+	BROADCAST,
 } t_operations;
 
 int queue_init(t_tape *queue, int capacity);
 int queue_destroy(t_tape *queue);
-int queue_put(t_tape *queue, element *x);
-element *queue_get(t_tape *queue);
+int queue_put(t_tape *queue, t_element *x);
+t_element *queue_get(t_tape *queue);
 int queue_empty(t_tape *queue);
 int queue_full(t_tape *queue);
-void *safe_malloc(size_t size);
+void *safe_malloc(size_t size, bool calloc_flag);
 void safe_sem(sem_t *sem, int value, t_operations operation);
 void safe_thread(pthread_t *thread, void *(*f)(void *), void *arg, void *retval, t_operations operation);
 void safe_mutex(pthread_mutex_t *mutex, t_operations operation);
