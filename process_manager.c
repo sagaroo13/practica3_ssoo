@@ -51,7 +51,7 @@ void *productor(void *arg)
 		safe_cond(&queue->not_empty, &queue->queue_mtx, SIGNAL); // avisa al consumidor si estaba bloqueado
 
         safe_mutex(&queue->queue_mtx, UNLOCK);
-        usleep(5*1e5); // simula trabajo
+        usleep(2*1e5); // simula trabajo
     }
 
 	safe_mutex(&queue->queue_mtx, LOCK);
@@ -86,7 +86,7 @@ void *consumer(void *arg)
 
         safe_cond(&queue->not_full, &queue->queue_mtx, SIGNAL); // avisa al productor si estaba bloqueado
 		safe_mutex(&queue->queue_mtx, UNLOCK);
-		usleep(5*1e5);
+		usleep(2*1e5);
     }
 
     return (NULL);
@@ -96,6 +96,7 @@ void *process_manager (void *arg)
 {
 	pthread_t threads[NUM_THREADS];
 	t_tape *queue;
+	int *status;
 
 	queue = (t_tape *)arg;
 	safe_mutex(&queue->factory->mtx, LOCK);
@@ -114,5 +115,10 @@ void *process_manager (void *arg)
 	// printf(GREEN"[OK]"RESET"[factory_manager] Process_manager with id %d has finished.\n", queue->id);
 	// if (queue->semaphore_id + 1 < queue->factory->n_tapes)
 	// 	safe_sem(&queue->factory->sems[queue->semaphore_id + 1], 0, POST);
-   	return (NULL);
+	status = safe_malloc(sizeof(int), false);
+	// if (queue->id % 2 == 0)
+	*status = 0;
+	// else
+	// 	*status = -1;
+   	return (status);
 }

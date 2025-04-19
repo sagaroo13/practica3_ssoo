@@ -86,14 +86,14 @@ void safe_sem(sem_t *sem, int value, t_operations operation)
 		err_free_exit(NULL, RED"[ERROR]"RESET"[factory_manager] Semaphore operation failed.");
 }
 
-void safe_thread(pthread_t *thread, void *(*f)(void *), void *arg, void *retval, t_operations operation)
+void safe_thread(pthread_t *thread, void *(*f)(void *), void *arg, void **retval, t_operations operation)
 {
 	int ret;
 
 	if (operation == CREATE)
 		ret = pthread_create(thread, NULL, f, arg);
 	else if (operation == JOIN)
-		ret = pthread_join(*thread, &retval);
+		ret = pthread_join(*thread, retval);
 	else if (operation == DETACH)
 		ret = pthread_detach(*thread);
 	if (ret)
@@ -124,7 +124,51 @@ void safe_close(FILE *fd)
 
 	ret = fclose(fd);
 	if (ret == EOF)
-		err_free_exit(NULL, RED"[ERROR]"RESET"[factory_manager] Invalid file.");
+		err_free_exit(NULL, RED"[ERROR]"RESET"[factory_manager] Error in fclose.");
+}
+
+bool check_input(FILE *fd)
+{
+    int count = 0;
+	int max_tapes = 0;
+	char *line;
+	char *ptr;
+
+	line = safe_malloc((size_t)1024, false);
+    if (!fgets(line, 1024, fd))
+	{
+        free(line); // Liberar memoria si fgets falla
+        return (false);
+    }
+	ptr = line;
+    // Contar la cantidad de números en la línea
+    while (*ptr)
+    {
+        // Saltar espacios
+        while (isspace(*ptr))
+            ptr++;
+
+        // Verificar si hay un número
+        if (isdigit(*ptr))
+        {
+            count++;
+            // Avanzar hasta el final del número
+            while (isdigit(*ptr))
+                ptr++;
+        }
+		if (count == 1)
+			max_tapes = count;
+        else if (*ptr != '\0' && !isspace(*ptr))
+		{
+			free(line);
+            return (false);
+		}
+    }
+	free(line);
+	fseek(fd, 0, SEEK_SET);
+    if ((count - max_tapes) % 3 != 0)
+		return (false);
+    return (true);
 }
 
 t_factory	*parser(const char *filename)
@@ -134,12 +178,20 @@ t_factory	*parser(const char *filename)
     t_factory *factory;
     int last;
 
-    factory = safe_malloc(sizeof(t_factory), false);
+
     if (!(fd = fopen(filename, "r")))
-        err_free_exit(factory, RED"[ERROR]"RESET"[factory_manager] Unable to open file.");
-    
+        err_free_exit(NULL, RED"[ERROR]"RESET"[factory_manager] Unable to open file.");
+	if (!check_input(fd))
+	{
+		safe_close(fd);
+		err_free_exit(NULL, RED"[ERROR]"RESET"[factory_manager] Invalid input in file.");
+	}
+	factory = safe_malloc(sizeof(t_factory), false);
     if (fscanf(fd, "%d", &factory->max_tapes) != 1 || factory->max_tapes <= 0)
+	{
+		safe_close(fd);
         err_free_exit(factory, RED"[ERROR]"RESET"[factory_manager] Invalid max_tapes value.");
+	}
     
     factory->tapes = safe_malloc(factory->max_tapes * sizeof(t_tape), false);
     factory->n_tapes = 0;
@@ -150,9 +202,15 @@ t_factory	*parser(const char *filename)
     while (fscanf(fd, "%d %d %d", &temp.id, &temp.max_size, &temp.num_elements) == 3)
     {
         if (temp.max_size <= 0 || temp.num_elements <= 0)
+		{
+			safe_close(fd);
             err_free_exit(factory, RED"[ERROR]"RESET"[factory_manager] Invalid tape data.");
+		}
 		if (factory->n_tapes >= factory->max_tapes)
+		{
+			safe_close(fd);
             err_free_exit(factory, RED"[ERROR]"RESET"[factory_manager] Too many tapes in input file.");
+		}
         safe_sem(&factory->sems[factory->n_tapes], factory->n_tapes == 0 ? 1 : 0, INIT);
 		temp.semaphore_id = factory->n_tapes;
 		temp.factory = factory;
@@ -183,7 +241,7 @@ void	print_factory(t_factory *factory)
 void	run_factory(t_factory *factory)
 {
 	int i;
-	void *status;
+	int *status;
 
 	for (i = 0; i < factory->n_tapes; i++)
 	{
@@ -195,8 +253,12 @@ void	run_factory(t_factory *factory)
 	safe_mutex(&factory->mtx, UNLOCK);
 	for (i = 0; i < factory->n_tapes; i++)
 	{
-		safe_thread(&factory->tapes[i].tape_id, NULL, NULL, NULL, JOIN); // Pasar la dirección de status
-		printf(GREEN"[OK]"RESET"[factory_manager] Process_manager with id %d has finished.\n", factory->tapes[i].id);
+		safe_thread(&factory->tapes[i].tape_id, NULL, NULL, (void **)&status, JOIN); // Pasar la dirección de status
+		if (!*status)
+			printf(GREEN"[OK]"RESET"[factory_manager] Process_manager with id %d has finished.\n", factory->tapes[i].id);
+		else
+			fprintf(stderr, RED"[ERROR]"RESET"[factory_manager] Process_manager with id %d has finished with errors.\n", factory->tapes[i].id);
+		free(status);
 		if (factory->tapes[i].semaphore_id + 1 < factory->n_tapes)
 			safe_sem(&factory->sems[factory->tapes[i].semaphore_id + 1], 0, POST);
 	}
@@ -215,8 +277,8 @@ int main (int argc, const char **argv)
 	}
 	factory = parser(argv[1]);
 	run_factory(factory);
-	// print_factory(factory);
-	free_all(factory);
+	print_factory(factory);
+	// free_all(factory);
 
 	return (EXIT_SUCCESS);
 }

@@ -84,7 +84,7 @@ int queue_empty(t_tape *queue);
 int queue_full(t_tape *queue);
 void *safe_malloc(size_t size, bool calloc_flag);
 void safe_sem(sem_t *sem, int value, t_operations operation);
-void safe_thread(pthread_t *thread, void *(*f)(void *), void *arg, void *retval, t_operations operation);
+void safe_thread(pthread_t *thread, void *(*f)(void *), void *arg, void **retval, t_operations operation);
 void safe_mutex(pthread_mutex_t *mutex, t_operations operation);
 void safe_cond(pthread_cond_t *cond, pthread_mutex_t *mutex, t_operations operation);
 void *process_manager (void *arg);
