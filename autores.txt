@@ -1,2 +1,3 @@
-NIA,Apellidos,Nombre <- Reemplazame (eliminame)
-NIA,Surname,First name <-Replace Me (delete me)
+100524679, Sagaró Barrachina, Juan
+100524911, Alonso Pulido, Jaime
+100524429, Rodríguez Fernández, Martín

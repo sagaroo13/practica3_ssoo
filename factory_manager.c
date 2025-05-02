@@ -1,9 +1,3 @@
-/*
- *
- * factory_manager.c
- *
- */
-
 #include "queue.h"
 
 void	free_all(t_factory *factory)
@@ -20,12 +14,10 @@ void	free_all(t_factory *factory)
 			}
 			free(factory->tapes);
 		}
-		if (factory->sems)
-		{
-			for (int i = 0; i < factory->n_tapes; i++)
-				safe_sem(&factory->sems[i], 0, DESTROY);
-			free(factory->sems);
-		}
+		safe_cond(&factory->ready_threads, NULL, DESTROY);
+		safe_cond(&factory->waiting_threads, NULL, DESTROY);
+		safe_cond(&factory->broadcast, NULL, DESTROY);
+		safe_sem(&factory->sem, 0, DESTROY);
 		safe_mutex(&factory->mtx, DESTROY);
 		free(factory);
 	}
@@ -43,14 +35,12 @@ void *safe_malloc(size_t size, bool calloc_flag)
 {
 	void *ptr;
 
-	if (size == 0)
-		err_free_exit(NULL, RED"[ERROR]"RESET" Memory allocation failed.");
 	if (calloc_flag)
 		ptr = calloc(1, size);
 	else
 		ptr = malloc(size);
 	if (!ptr)
-		err_free_exit(NULL, RED"[ERROR]"RESET" Memory allocation failed.");
+		err_free_exit(NULL, "[ERROR] Memory allocation failed.");
 	return (ptr);
 }
 
@@ -67,7 +57,7 @@ void	safe_mutex(pthread_mutex_t *mutex, t_operations operation)
 	else if (operation == UNLOCK)
 		ret = pthread_mutex_unlock(mutex);
 	if (ret)
-		err_free_exit(NULL, RED"[ERROR]"RESET"[factory_manager] Mutex operation failed.");
+		err_free_exit(NULL, "[ERROR][factory_manager] Mutex operation failed.");
 }
 
 void safe_sem(sem_t *sem, int value, t_operations operation)
@@ -83,7 +73,7 @@ void safe_sem(sem_t *sem, int value, t_operations operation)
 	else if (operation == POST)
 		ret = sem_post(sem);
 	if (ret)
-		err_free_exit(NULL, RED"[ERROR]"RESET"[factory_manager] Semaphore operation failed.");
+		err_free_exit(NULL, "[ERROR][factory_manager] Semaphore operation failed.");
 }
 
 void safe_thread(pthread_t *thread, void *(*f)(void *), void *arg, void **retval, t_operations operation)
@@ -97,7 +87,7 @@ void safe_thread(pthread_t *thread, void *(*f)(void *), void *arg, void **retval
 	else if (operation == DETACH)
 		ret = pthread_detach(*thread);
 	if (ret)
-		err_free_exit(NULL, RED"[ERROR]"RESET"[factory_manager] Thread operation failed.");
+		err_free_exit(NULL, "[ERROR][factory_manager] Thread operation failed.");
 }
 
 void safe_cond(pthread_cond_t *cond, pthread_mutex_t *mutex, t_operations operation)
@@ -115,7 +105,7 @@ void safe_cond(pthread_cond_t *cond, pthread_mutex_t *mutex, t_operations operat
 	else if (operation == BROADCAST)
 		ret = pthread_cond_broadcast(cond);
 	if (ret)
-		err_free_exit(NULL, RED"[ERROR]"RESET"[factory_manager] Condition variable operation failed.");
+		err_free_exit(NULL, "[ERROR][factory_manager] Condition variable operation failed.");
 }
 
 void safe_close(FILE *fd)
@@ -124,7 +114,7 @@ void safe_close(FILE *fd)
 
 	ret = fclose(fd);
 	if (ret == EOF)
-		err_free_exit(NULL, RED"[ERROR]"RESET"[factory_manager] Error in fclose.");
+		err_free_exit(NULL, "[ERROR][factory_manager] Error in fclose.");
 }
 
 bool check_input(FILE *fd)
@@ -176,27 +166,32 @@ t_factory	*parser(const char *filename)
     FILE *fd;
     t_tape temp;
     t_factory *factory;
-    int last;
-
 
     if (!(fd = fopen(filename, "r")))
-        err_free_exit(NULL, RED"[ERROR]"RESET"[factory_manager] Unable to open file.");
+	{
+        err_free_exit(NULL, "[ERROR][factory_manager] Invalid file.");
+	}
 	if (!check_input(fd))
 	{
 		safe_close(fd);
-		err_free_exit(NULL, RED"[ERROR]"RESET"[factory_manager] Invalid input in file.");
+		err_free_exit(NULL, "[ERROR][factory_manager] Invalid file.");
 	}
 	factory = safe_malloc(sizeof(t_factory), false);
     if (fscanf(fd, "%d", &factory->max_tapes) != 1 || factory->max_tapes <= 0)
 	{
 		safe_close(fd);
-        err_free_exit(factory, RED"[ERROR]"RESET"[factory_manager] Invalid max_tapes value.");
+        err_free_exit(factory, "[ERROR][factory_manager] Invalid file.");
 	}
     
     factory->tapes = safe_malloc(factory->max_tapes * sizeof(t_tape), false);
     factory->n_tapes = 0;
-    factory->sems = safe_malloc(factory->max_tapes * sizeof(sem_t), false);
-	safe_cond(&factory->ready, NULL, INIT);
+	factory->ready_tapes = 0;
+	factory->waiting_tapes = 0;
+    // factory->sems = safe_malloc(factory->max_tapes * sizeof(sem_t), false);
+	safe_cond(&factory->ready_threads, NULL, INIT);
+	safe_cond(&factory->waiting_threads, NULL, INIT);
+	safe_cond(&factory->broadcast, NULL, INIT);
+	safe_sem(&factory->sem, 0, INIT);
 	safe_mutex(&factory->mtx, INIT);
 
     while (fscanf(fd, "%d %d %d", &temp.id, &temp.max_size, &temp.num_elements) == 3)
@@ -204,15 +199,15 @@ t_factory	*parser(const char *filename)
         if (temp.max_size <= 0 || temp.num_elements <= 0)
 		{
 			safe_close(fd);
-            err_free_exit(factory, RED"[ERROR]"RESET"[factory_manager] Invalid tape data.");
+            err_free_exit(factory, "[ERROR][factory_manager] Invalid file.");
 		}
 		if (factory->n_tapes >= factory->max_tapes)
 		{
 			safe_close(fd);
-            err_free_exit(factory, RED"[ERROR]"RESET"[factory_manager] Too many tapes in input file.");
+            err_free_exit(factory, "[ERROR][factory_manager] Invalid file.");
 		}
-        safe_sem(&factory->sems[factory->n_tapes], factory->n_tapes == 0 ? 1 : 0, INIT);
-		temp.semaphore_id = factory->n_tapes;
+        // safe_sem(&factory->sems[factory->n_tapes], factory->n_tapes == 0 ? 1 : 0, INIT);
+		// temp.semaphore_id = factory->n_tapes;
 		temp.factory = factory;
 		temp.finished = false;
 		temp.num_created = 0;
@@ -226,16 +221,36 @@ t_factory	*parser(const char *filename)
     return (factory);
 }
 
-void	print_factory(t_factory *factory)
-{
-	int i;
+// void	print_factory(t_factory *factory)
+// {
+// 	int i;
 
-	printf(GREEN"[INFO]"RESET"[factory_manager] Factory with %d tapes:\n", factory->n_tapes);
-	for (i = 0; i < factory->n_tapes; i++)
-	{
-		printf(BLUE"[INFO]"RESET"[factory_manager] Tape %d: size %d, elements %d\n",
-			factory->tapes[i].id, factory->tapes[i].max_size, factory->tapes[i].num_elements);
-	}
+// 	printf(GREEN"[INFO][factory_manager] Factory with %d tapes:\n", factory->n_tapes);
+// 	for (i = 0; i < factory->n_tapes; i++)
+// 	{
+// 		printf(BLUE"[INFO][factory_manager] Tape %d: size %d, elements %d\n",
+// 			factory->tapes[i].id, factory->tapes[i].max_size, factory->tapes[i].num_elements);
+// 	}
+// }
+
+// Se encarga de sincronizar los procesos en dos barreras:
+// La primera espera a que todos los procesos estén listos y la segunda espera a que todos los procesos estén esperando
+// La primera barrera se implementa con un semáforo y una condición, mientras que la segunda barrera se implementa con doble condición y broadcast
+static void synchro(t_factory *factory)
+{
+	safe_mutex(&factory->mtx, LOCK);
+	while (factory->ready_tapes < factory->n_tapes)
+    	safe_cond(&factory->ready_threads, &factory->mtx, WAIT); // Espera a que todos los procesos estén listos
+	safe_mutex(&factory->mtx, UNLOCK);
+
+	for (int i = 0; i < factory->n_tapes; ++i)
+    	safe_sem(&factory->sem, 0, POST); // Desbloquea todos los procesos
+
+	safe_mutex(&factory->mtx, LOCK);
+	while (factory->waiting_tapes < factory->n_tapes)
+    	safe_cond(&factory->waiting_threads, &factory->mtx, WAIT); // Espera a que todos los procesos estén listos
+	safe_cond(&factory->broadcast, NULL, BROADCAST); // Desbloquea todos los procesos
+	safe_mutex(&factory->mtx, UNLOCK);
 }
 
 void	run_factory(t_factory *factory)
@@ -246,39 +261,36 @@ void	run_factory(t_factory *factory)
 	for (i = 0; i < factory->n_tapes; i++)
 	{
 		safe_thread(&factory->tapes[i].tape_id, process_manager, &factory->tapes[i], NULL, CREATE);
-		printf(GREEN"[OK]"RESET"[factory_manager] Process_manager with id %d has been created.\n", factory->tapes[i].id);
+		printf("[OK][factory_manager] Process_manager with id %d has been created.\n", factory->tapes[i].id);
 	}
-	safe_mutex(&factory->mtx, LOCK);
-	safe_cond(&factory->ready, &factory->mtx, BROADCAST); // Avisa a los procesos que la fábrica está lista
-	safe_mutex(&factory->mtx, UNLOCK);
+
+	synchro(factory);
+
 	for (i = 0; i < factory->n_tapes; i++)
 	{
 		safe_thread(&factory->tapes[i].tape_id, NULL, NULL, (void **)&status, JOIN); // Pasar la dirección de status
 		if (!*status)
-			printf(GREEN"[OK]"RESET"[factory_manager] Process_manager with id %d has finished.\n", factory->tapes[i].id);
+			printf("[OK][factory_manager] Process_manager with id %d has finished.\n", factory->tapes[i].id);
 		else
-			fprintf(stderr, RED"[ERROR]"RESET"[factory_manager] Process_manager with id %d has finished with errors.\n", factory->tapes[i].id);
+			fprintf(stderr, "[ERROR][factory_manager] Process_manager with id %d has finished with errors.\n", factory->tapes[i].id);
 		free(status);
-		if (factory->tapes[i].semaphore_id + 1 < factory->n_tapes)
-			safe_sem(&factory->sems[factory->tapes[i].semaphore_id + 1], 0, POST);
+		// if (factory->tapes[i].semaphore_id + 1 < factory->n_tapes)
+		// 	safe_sem(&factory->sems[factory->tapes[i].semaphore_id + 1], 0, POST);
 	}
-	printf(GREEN"[OK]"RESET"[factory_manager] Finishing.\n");
+	printf("[OK][factory_manager] Finishing.\n");
 }
 
 int main (int argc, const char **argv)
 {
-	int* status;
 	t_factory *factory;
 
 	if (argc != 2)
 	{
-		fprintf(stderr, RED"[ERROR]"RESET"[factory_manager] Usage: %s <input_file>\n", argv[0]);
+		fprintf(stderr, "[ERROR][factory_manager] Usage: %s <input_file>\n", argv[0]);
 		return (-1);
 	}
 	factory = parser(argv[1]);
 	run_factory(factory);
-	print_factory(factory);
-	// free_all(factory);
-
+	free_all(factory);
 	return (EXIT_SUCCESS);
 }

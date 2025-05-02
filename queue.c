@@ -1,29 +1,32 @@
-#include <stdio.h>
-#include <stdlib.h>
 #include "queue.h"
 
-void print_queue(t_tape *queue)
-{
-	int i;
+// void print_queue(t_tape *queue)
+// {
+// 	int i;
 
-	printf(GREEN"[INFO]"RESET"[queue] Queue with id %d has %d elements:\n", queue->id, queue->size);
-	for (i = 0; i < queue->max_size; i++)
-	{
-        if (i == 0 && i == queue->max_size - 1)
-            printf("[%d]\n", queue->elements[i].num_edition);
-        else if (i == 0)
-		    printf("[%d,", queue->elements[i].num_edition);
-        else if (i == queue->max_size - 1)
-            printf("%d]\n", queue->elements[i].num_edition);
-        else
-            printf("%d,", queue->elements[i].num_edition);
-	}
-}
+// 	printf(GREEN"[INFO]"RESET"[queue] Queue with id %d has %d elements:\n", queue->id, queue->size);
+// 	for (i = 0; i < queue->max_size; i++)
+// 	{
+//         if (i == 0 && i == queue->max_size - 1)
+//             printf("[%d]\n", queue->elements[i].num_edition);
+//         else if (i == 0)
+// 		    printf("[%d,", queue->elements[i].num_edition);
+//         else if (i == queue->max_size - 1)
+//             printf("%d]\n", queue->elements[i].num_edition);
+//         else
+//             printf("%d,", queue->elements[i].num_edition);
+// 	}
+// }
 
 // Inicializar la cola circular
 int queue_init(t_tape *queue, int capacity)
 {
-    queue->elements = safe_malloc(sizeof(t_element) * capacity, true); // Asignar memoria para los elementos
+    queue->elements = malloc(sizeof(t_element) * capacity); // Asignar memoria para los elementos
+    if (!queue->elements)
+    {
+        fprintf(stderr, "[ERROR][queue] There was an error while using queue with id: %d\n", queue->id);
+        return (-1);
+    }
     queue->head = 0;
     queue->tail = -1;
 	queue->size = 0;

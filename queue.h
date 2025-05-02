@@ -23,6 +23,8 @@
 # define WHITE "\033[37m"
 # define RESET "\033[0m"
 
+#define NUM_THREADS 2
+
 typedef struct s_factory t_factory;
 
 typedef struct s_element
@@ -35,7 +37,7 @@ typedef struct s_element
 typedef struct s_tape
 {
 	int id;
-	int semaphore_id;
+	// int semaphore_id;
 	int max_size; //capacity
 	int size; //size
 	int num_elements;
@@ -55,10 +57,15 @@ typedef struct s_factory
 {
 	int max_tapes;
 	int n_tapes;
-	pthread_cond_t ready;
+	int ready_tapes;
+	int waiting_tapes;
+	pthread_cond_t ready_threads;
+	pthread_cond_t waiting_threads;
+	pthread_cond_t broadcast;
+	sem_t sem;
 	pthread_mutex_t mtx;
 	t_tape *tapes;
-	sem_t *sems;
+	// sem_t *sems;
 } t_factory;
 
 typedef enum e_operations

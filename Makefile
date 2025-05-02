@@ -1,5 +1,5 @@
 CC=gcc
-FLAGS=-g -Wall -Werror
+CFLAGS=-g -Wall -Werror
 OBJ= queue factory_manager
 LIBS= -pthread
 
@@ -13,9 +13,6 @@ queue: queue.c
 
 factory_manager:	factory_manager.c
 	$(CC) $(CFLAGS) $(LIBS) -o factory  factory_manager.c process_manager.c queue.c
-
-#load:
-#	ld -o process queue.o
 
 clean:
 	rm -f factory process *.o
