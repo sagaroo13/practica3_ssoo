@@ -21,7 +21,7 @@
 // Inicializar la cola circular
 int queue_init(t_tape *queue, int capacity)
 {
-    queue->elements = malloc(sizeof(t_element) * capacity); // Asignar memoria para los elementos
+    queue->elements = calloc(capacity, sizeof(t_element)); // Asignar memoria para los elementos
     if (!queue->elements)
     {
         fprintf(stderr, "[ERROR][queue] There was an error while using queue with id: %d\n", queue->id);
