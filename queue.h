@@ -25,6 +25,8 @@
 
 #define NUM_THREADS 2
 
+// Se explica el por qué de las estructuras empleadas en la memoria de la práctica
+
 typedef struct s_factory t_factory;
 
 typedef struct s_element
@@ -37,7 +39,6 @@ typedef struct s_element
 typedef struct s_tape
 {
 	int id;
-	// int semaphore_id;
 	int max_size; //capacity
 	int size; //size
 	int num_elements;
@@ -65,7 +66,6 @@ typedef struct s_factory
 	sem_t sem;
 	pthread_mutex_t mtx;
 	t_tape *tapes;
-	// sem_t *sems;
 } t_factory;
 
 typedef enum e_operations
@@ -83,18 +83,26 @@ typedef enum e_operations
 	BROADCAST,
 } t_operations;
 
+
+// PROCESS MANAGER
+void *process_manager (void *arg);
+
+// QUEUE OPERATIONS
 int queue_init(t_tape *queue, int capacity);
 int queue_destroy(t_tape *queue);
 int queue_put(t_tape *queue, t_element *x);
 t_element *queue_get(t_tape *queue);
 int queue_empty(t_tape *queue);
 int queue_full(t_tape *queue);
+
+// UTILS
 void *safe_malloc(size_t size, bool calloc_flag);
 void safe_sem(sem_t *sem, int value, t_operations operation);
 void safe_thread(pthread_t *thread, void *(*f)(void *), void *arg, void **retval, t_operations operation);
 void safe_mutex(pthread_mutex_t *mutex, t_operations operation);
 void safe_cond(pthread_cond_t *cond, pthread_mutex_t *mutex, t_operations operation);
-void *process_manager (void *arg);
-void set_bool(pthread_mutex_t *mutex, bool *target, bool value);
+void safe_close(FILE *fd);
+void free_all(t_factory *factory);
+void err_free_exit(t_factory *factory, const char *msg);
 
 #endif
